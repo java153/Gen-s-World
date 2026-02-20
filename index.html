@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Gen's World!</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="game" width="320" height="180" aria-label="Gen's World game canvas"></canvas>
+
+    <section id="hud" class="panel" aria-live="polite">
+      <div><strong>Gen's World!</strong> <span id="moodLabel">Sunset Garden</span></div>
+      <div>Score: <span id="scoreLabel">0</span> · Best: <span id="bestLabel">0</span> · Gems: <span id="gemLabel">0</span></div>
+      <div id="messageLabel">Collect Gems of Gen and drift through moods ✨</div>
+    </section>
+
+    <section id="menu" class="panel">
+      <h1>Gen's World!</h1>
+      <p>Made for Gen 💖</p>
+      <p class="small">Move: WASD/Arrows · Dash: Space · Pause: P · Mute: M · FPS: F</p>
+      <label>Seed phrase <input id="seedInput" maxlength="40" placeholder="gen" /></label>
+      <div class="row">
+        <button id="startBtn">Start Adventure</button>
+        <button id="challengeBtn">Challenge Mode: Off</button>
+      </div>
+      <details>
+        <summary>Settings</summary>
+        <label><input type="checkbox" id="perfMode" /> Performance mode</label>
+        <label><input type="checkbox" id="scanlineMode" checked /> CRT scanlines</label>
+        <label><input type="checkbox" id="reducedMotion" /> Reduced motion</label>
+        <label><input type="checkbox" id="highContrast" /> High contrast</label>
+        <label>Volume <input id="volume" type="range" min="0" max="1" value="0.7" step="0.01" /></label>
+      </details>
+      <p id="unlockLabel" class="small"></p>
+    </section>
+
+    <section id="startOverlay" class="overlay">
+      <button id="gestureBtn">Click to Start 💫</button>
+    </section>
+
+    <section id="touchControls" aria-label="Touch controls">
+      <div id="stickZone"><div id="stickKnob"></div></div>
+      <button id="actionBtn">Dash</button>
+    </section>
+
+    <section id="fpsOverlay" class="panel hidden">FPS: --<br/>FT: -- ms</section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
