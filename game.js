@@ -1,575 +1,591 @@
-/* Gen's World! - single file game engine, no dependencies */
 (() => {
   'use strict';
 
-  // ===================== Config =====================
-  const W = 320;
-  const H = 180;
+  // ================= Config =================
+  const W = 320, H = 180;
   const FIXED_DT = 1 / 60;
-  const MAX_ACCUM = 0.2;
-  const GEM_POOL = 20;
-  const PARTICLE_POOL = 220;
-  const CAMERA_SHAKE_DECAY = 1.6;
+  const MAX_ACCUM = 0.25;
+  const GRID_W = 64, GRID_H = 48, CELL = 3;
+  const PAINT_X = 64, PAINT_Y = 18, PAINT_W = GRID_W * CELL, PAINT_H = GRID_H * CELL;
+  const PARTICLE_MAX = 180;
+  const SAVE_KEY = 'gens_world_painter_v2';
 
-  const MOODS = [
-    { name: 'Sunset Garden', bgA: '#2b1f3d', bgB: '#ff7f7f', ground: '#6c4d84', deco: '#7dd67d', gem: '#ffd35c', quirk: 0 },
-    { name: 'Neon Night', bgA: '#09041d', bgB: '#2e2be8', ground: '#3f2f6a', deco: '#48f2ff', gem: '#ff58dc', quirk: 1 },
-    { name: 'Rainy Arcade', bgA: '#1a294a', bgB: '#436f8d', ground: '#2a3f52', deco: '#80c8d2', gem: '#9bf9ff', quirk: 2 },
-    { name: 'Starfield', bgA: '#050510', bgB: '#301050', ground: '#2b2153', deco: '#fff2a5', gem: '#ff9ccd', quirk: 3 }
+  const PALETTES = [
+    {
+      name: 'Pharaoh Sunset',
+      colors: [
+        [66, 102, 220], [250, 133, 56], [211, 116, 24], [241, 227, 95],
+        [93, 203, 255], [116, 232, 146], [169, 92, 255], [255, 95, 152]
+      ]
+    },
+    {
+      name: 'Neon Tomb',
+      colors: [
+        [76, 86, 236], [255, 98, 74], [247, 208, 63], [112, 248, 255],
+        [255, 68, 210], [129, 251, 131], [255, 160, 91], [175, 201, 255]
+      ]
+    },
+    {
+      name: 'Gen Dream',
+      colors: [
+        [103, 128, 255], [255, 126, 201], [255, 179, 102], [255, 243, 147],
+        [132, 236, 255], [181, 255, 182], [211, 157, 255], [255, 106, 106]
+      ]
+    }
   ];
 
-  const SAVE_KEY = 'gens_world_save_v1';
+  const SECRET_MSG = [
+    'Gen, every pixel is a little love note 💖',
+    'Palette unlocked: Neon Tomb ✨',
+    'Palette unlocked: Gen Dream 🌈',
+    'Your art is glowing beautifully.'
+  ];
 
-  // ===================== Util =====================
+  // ================= Utils =================
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-  const lerp = (a, b, t) => a + (b - a) * t;
-  const easeOutQuad = t => 1 - (1 - t) * (1 - t);
-
-  function hashString(str) {
+  const hashString = (str) => {
     let h = 2166136261 >>> 0;
-    for (let i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
     return h >>> 0;
-  }
-
-  function makeRng(seed) {
-    let s = seed >>> 0 || 123456789;
-    return () => {
-      s ^= s << 13; s ^= s >>> 17; s ^= s << 5;
-      return ((s >>> 0) & 0xffffffff) / 4294967296;
-    };
-  }
-
-  function daySeed() {
+  };
+  const makeRng = (seed) => {
+    let s = seed >>> 0 || 1;
+    return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; };
+  };
+  const daySeed = () => {
     const d = new Date();
     return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
-  }
+  };
 
-  // ===================== DOM =====================
+  // ================= DOM =================
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  const hud = document.getElementById('hud');
-  const menu = document.getElementById('menu');
+  ctx.imageSmoothingEnabled = false;
+
+  const titleCard = document.getElementById('titleCard');
+  const topHud = document.getElementById('topHud');
   const startOverlay = document.getElementById('startOverlay');
   const fpsOverlay = document.getElementById('fpsOverlay');
-  const scoreLabel = document.getElementById('scoreLabel');
+  const paletteRow = document.getElementById('paletteRow');
+
+  const strokeLabel = document.getElementById('strokeLabel');
   const bestLabel = document.getElementById('bestLabel');
   const gemLabel = document.getElementById('gemLabel');
   const moodLabel = document.getElementById('moodLabel');
   const messageLabel = document.getElementById('messageLabel');
   const unlockLabel = document.getElementById('unlockLabel');
-  const seedInput = document.getElementById('seedInput');
-  const volumeSlider = document.getElementById('volume');
+  const brushLabel = document.getElementById('brushLabel');
 
-  // ===================== State =====================
+  const seedInput = document.getElementById('seedInput');
+  const perfModeEl = document.getElementById('perfMode');
+  const scanlineEl = document.getElementById('scanlineMode');
+  const reducedMotionEl = document.getElementById('reducedMotion');
+  const highContrastEl = document.getElementById('highContrast');
+  const showFpsEl = document.getElementById('showFpsToggle');
+  const muteEl = document.getElementById('muteToggle');
+  const volumeEl = document.getElementById('volume');
+
+  // ================= State =================
   let rng = makeRng(hashString(daySeed()));
-  let inMenu = true;
   let started = false;
   let paused = false;
-  let challengeMode = false;
   let showFps = false;
-  let mute = false;
+  let perfMode = false;
+  let scanline = true;
   let reducedMotion = false;
   let highContrast = false;
-  let scanline = true;
-  let perfMode = false;
-  let moodIndex = 0;
-  let moodMeter = 0;
-  let score = 0;
-  let gemCount = 0;
-  let timer = 120;
-  let secretIndex = 0;
-  let bestScore = 0;
-  let unlockedPalettes = 0;
+  let muted = false;
+
+  let paletteUnlock = 1;
+  let paletteIndex = 0;
+  let colorIndex = 0;
+  let tool = 0; // 0 paint, 1 erase, 2 pulse+
+  let brush = 2;
+  let strokes = 0;
+  let gems = 0;
+  let best = 0;
+  let secretStep = 0;
+  let globalWave = 0;
+
   let accum = 0;
   let last = 0;
-  let frameFps = 60;
-  let frameMs = 16.7;
-  let fpsTimer = 0;
   let fpsFrames = 0;
-  let cameraShake = 0;
+  let fpsTime = 0;
+  let fps = 60;
 
-  const secrets = [
-    'Gen, your smile is my favorite power-up.',
-    'You unlocked: Starlight Palette ✨',
-    'The world says: thank you for being you 💖'
-  ];
+  // Grid data (typed arrays for perf)
+  const colorGrid = new Uint8Array(GRID_W * GRID_H); // 0 = empty, 1..8 color idx+1
+  const pulseGrid = new Uint8Array(GRID_W * GRID_H); // phase offset
 
-  const player = {
-    x: 160, y: 100, vx: 0, vy: 0, speed: 58,
-    dashCd: 0, dashT: 0, face: 1
-  };
+  // Offscreen paint buffer
+  const paintCanvas = document.createElement('canvas');
+  paintCanvas.width = PAINT_W;
+  paintCanvas.height = PAINT_H;
+  const paintCtx = paintCanvas.getContext('2d', { alpha: false, desynchronized: true });
+  const paintImage = paintCtx.createImageData(PAINT_W, PAINT_H);
+  const px = new Uint32Array(paintImage.data.buffer);
+  const littleEndian = new Uint8Array(new Uint32Array([0x11223344]).buffer)[0] === 0x44;
 
-  const gems = new Float32Array(GEM_POOL * 3); // x, y, active
-  const particles = new Float32Array(PARTICLE_POOL * 7); // x y vx vy life type active
+  const WAVE = new Uint8Array(1024);
+  for (let i = 0; i < 1024; i++) WAVE[i] = (128 + Math.sin((i / 1024) * Math.PI * 2) * 127) | 0;
 
-  // ===================== Input =====================
-  const input = { up: 0, down: 0, left: 0, right: 0, action: 0 };
-  function onKey(e, d) {
-    const k = e.key.toLowerCase();
-    if (k === 'w' || k === 'arrowup') input.up = d;
-    else if (k === 's' || k === 'arrowdown') input.down = d;
-    else if (k === 'a' || k === 'arrowleft') input.left = d;
-    else if (k === 'd' || k === 'arrowright') input.right = d;
-    else if (k === ' ') input.action = d;
-    if (d && k === 'p') paused = !paused;
-    if (d && k === 'm') setMute(!mute);
-    if (d && k === 'f') { showFps = !showFps; fpsOverlay.classList.toggle('hidden', !showFps); }
-    if (d && k === 'enter' && inMenu) startRun();
+  // precomputed colors: [palette][color(0-7)][wave(0-1023)]
+  const colorLut = [];
+  function packRGBA(r, g, b) {
+    return littleEndian ? (255 << 24) | (b << 16) | (g << 8) | r : (r << 24) | (g << 16) | (b << 8) | 255;
   }
-  window.addEventListener('keydown', e => onKey(e, 1));
-  window.addEventListener('keyup', e => onKey(e, 0));
-
-  // Touch controls
-  const stick = document.getElementById('stickZone');
-  const knob = document.getElementById('stickKnob');
-  const actionBtn = document.getElementById('actionBtn');
-  let stickActive = false;
-  let stickCx = 50, stickCy = 50;
-  function handleStick(clientX, clientY) {
-    const r = stick.getBoundingClientRect();
-    const x = clientX - r.left;
-    const y = clientY - r.top;
-    const dx = clamp(x - stickCx, -32, 32);
-    const dy = clamp(y - stickCy, -32, 32);
-    knob.style.left = `${32 + dx}px`;
-    knob.style.top = `${32 + dy}px`;
-    input.left = dx < -8 ? 1 : 0; input.right = dx > 8 ? 1 : 0;
-    input.up = dy < -8 ? 1 : 0; input.down = dy > 8 ? 1 : 0;
+  function rebuildColorLut() {
+    colorLut.length = 0;
+    for (let p = 0; p < PALETTES.length; p++) {
+      const pal = PALETTES[p].colors;
+      const palSet = [];
+      for (let c = 0; c < pal.length; c++) {
+        const [br, bg, bb] = pal[c];
+        const arr = new Uint32Array(1024);
+        for (let w = 0; w < 1024; w++) {
+          const osc = WAVE[w];
+          const amp = highContrast ? 18 : 48;
+          const r = clamp(br + ((osc - 128) * amp >> 8), 0, 255);
+          const g = clamp(bg + ((127 - osc) * amp >> 8), 0, 255);
+          const b = clamp(bb + ((osc - 128) * amp >> 9), 0, 255);
+          arr[w] = packRGBA(r, g, b);
+        }
+        palSet.push(arr);
+      }
+      colorLut.push(palSet);
+    }
   }
-  stick.addEventListener('pointerdown', e => { stickActive = true; handleStick(e.clientX, e.clientY); });
-  stick.addEventListener('pointermove', e => { if (stickActive) handleStick(e.clientX, e.clientY); });
-  const endStick = () => {
-    stickActive = false; input.left = input.right = input.up = input.down = 0;
-    knob.style.left = '32px'; knob.style.top = '32px';
-  };
-  stick.addEventListener('pointerup', endStick);
-  stick.addEventListener('pointercancel', endStick);
-  actionBtn.addEventListener('pointerdown', () => { input.action = 1; });
-  actionBtn.addEventListener('pointerup', () => { input.action = 0; });
+  rebuildColorLut();
 
-  // ===================== Audio =====================
+  // ================= Audio =================
   class AudioEngine {
     constructor() {
       this.ctx = null;
       this.master = null;
       this.music = null;
       this.sfx = null;
-      this.delay = null;
-      this.playing = false;
-      this.volume = 0.7;
       this.step = 0;
-      this.nextNoteTime = 0;
-      this.tempo = 138;
+      this.tempo = 132;
+      this.nextTime = 0;
+      this.timer = 0;
+      this.playing = false;
       this.lookAhead = 0.12;
-      this.scheduleInt = 25;
-      this.scheduler = 0;
-      this.pattern = this.makeSong();
+      this.seqA = [64, 67, 71, 72, 71, 67, 64, -1, 64, 67, 71, 74, 71, 67, 64, -1];
+      this.bass = [40, -1, 40, -1, 43, -1, 35, -1, 38, -1, 40, -1, 35, -1, 31, -1];
+      this.noiseBuf = null;
     }
-
     init() {
       if (this.ctx) return;
-      const A = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new A();
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
       this.master = this.ctx.createGain();
       this.music = this.ctx.createGain();
       this.sfx = this.ctx.createGain();
-      this.delay = this.ctx.createDelay(0.2);
-      const fb = this.ctx.createGain();
-      this.delay.delayTime.value = 0.11;
-      fb.gain.value = 0.19;
-      this.delay.connect(fb); fb.connect(this.delay);
-      this.music.connect(this.delay);
-      this.delay.connect(this.master);
+      this.music.gain.value = 0.7;
+      this.sfx.gain.value = 0.8;
       this.music.connect(this.master);
       this.sfx.connect(this.master);
       this.master.connect(this.ctx.destination);
-      this.setVolume(this.volume);
+      this.setVolume(Number(volumeEl.value));
+      const size = this.ctx.sampleRate * 0.06;
+      this.noiseBuf = this.ctx.createBuffer(1, size | 0, this.ctx.sampleRate);
+      const d = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
     }
-
-    setVolume(v) {
-      this.volume = v;
-      if (this.master) this.master.gain.value = mute ? 0 : v;
-    }
-
-    noteHz(note) {
-      if (note < 0) return 0;
-      return 440 * Math.pow(2, (note - 69) / 12);
-    }
-
+    setVolume(v) { if (this.master) this.master.gain.value = muted ? 0 : v; }
+    hz(n) { return 440 * Math.pow(2, (n - 69) / 12); }
     tone(time, dur, note, type, gain, bus) {
-      if (note < 0 || !this.ctx) return;
+      if (!this.ctx || note < 0) return;
       const o = this.ctx.createOscillator();
       const g = this.ctx.createGain();
       o.type = type;
-      o.frequency.setValueAtTime(this.noteHz(note), time);
+      o.frequency.setValueAtTime(this.hz(note), time);
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(gain, time + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
       o.connect(g); g.connect(bus);
       o.start(time); o.stop(time + dur + 0.02);
     }
-
-    noise(time, dur, gain) {
-      const len = Math.floor(this.ctx.sampleRate * dur);
-      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = this.ctx.createBufferSource();
+    drum(time, gain = 0.05) {
+      if (!this.ctx || !this.noiseBuf) return;
+      const s = this.ctx.createBufferSource();
       const g = this.ctx.createGain();
+      s.buffer = this.noiseBuf;
       g.gain.value = gain;
-      src.buffer = buf; src.connect(g); g.connect(this.music);
-      src.start(time);
+      s.connect(g); g.connect(this.music);
+      s.start(time);
     }
-
-    makeSong() {
-      const A = [72, 74, 76, 77, 79, 81, 79, 77, 76, 74, 72, 69, 71, 72, -1, -1];
-      const B = [76, 77, 79, 81, 83, 84, 83, 81, 79, 77, 76, 72, 74, 76, -1, -1];
-      const BR = [67, 69, 71, 72, 74, 76, 77, 79, 77, 76, 74, 72, 71, 69, -1, -1];
-      const bassA = [48, -1, 48, -1, 50, -1, 52, -1, 45, -1, 45, -1, 47, -1, 50, -1];
-      const bassB = [52, -1, 52, -1, 55, -1, 57, -1, 50, -1, 50, -1, 52, -1, 55, -1];
-      const intro = [69, -1, 71, -1, 72, -1, 74, -1, 76, -1, 77, -1, 79, -1, -1, -1];
-      // ~2.3 minutes @138 bpm, 16th steps
-      const seq = [];
-      for (let i = 0; i < 4; i++) seq.push({ l: intro, b: bassA, d: i % 2 });
-      for (let i = 0; i < 16; i++) seq.push({ l: A, b: bassA, d: i % 2 });
-      for (let i = 0; i < 16; i++) seq.push({ l: B, b: bassB, d: 1 });
-      for (let i = 0; i < 8; i++) seq.push({ l: BR, b: bassA, d: 1 });
-      for (let i = 0; i < 16; i++) seq.push({ l: A, b: bassA, d: i % 2 });
-      return seq;
-    }
-
-    startMusic() {
+    start() {
       this.init();
       if (this.playing) return;
       this.playing = true;
-      this.nextNoteTime = this.ctx.currentTime + 0.06;
-      this.scheduler = window.setInterval(() => this.schedule(), this.scheduleInt);
+      this.nextTime = this.ctx.currentTime + 0.05;
+      this.timer = window.setInterval(() => this.schedule(), 25);
     }
-
-    stopMusic() {
-      if (this.scheduler) clearInterval(this.scheduler);
-      this.scheduler = 0;
+    stop() {
+      if (this.timer) clearInterval(this.timer);
+      this.timer = 0;
       this.playing = false;
     }
-
     schedule() {
-      const spb = 60 / this.tempo / 4;
-      while (this.nextNoteTime < this.ctx.currentTime + this.lookAhead) {
-        const patt = this.pattern[(this.step >> 4) % this.pattern.length];
+      const stepDur = 60 / this.tempo / 4;
+      while (this.nextTime < this.ctx.currentTime + this.lookAhead) {
         const i = this.step & 15;
-        const nL = patt.l[i];
-        const nB = patt.b[i];
-        if (nL >= 0) this.tone(this.nextNoteTime, spb * 0.9, nL, 'square', 0.06, this.music);
-        if (nB >= 0) this.tone(this.nextNoteTime, spb * 0.95, nB, 'triangle', 0.085, this.music);
-        if (patt.d && (i % 4 === 0)) this.noise(this.nextNoteTime, 0.03, 0.05);
-        if (i % 8 === 4) this.noise(this.nextNoteTime, 0.02, 0.03);
+        this.tone(this.nextTime, stepDur * 0.9, this.seqA[i], 'square', 0.06, this.music);
+        this.tone(this.nextTime, stepDur * 0.95, this.bass[i], 'triangle', 0.07, this.music);
+        if (i % 4 === 0) this.drum(this.nextTime, 0.04);
+        if (i % 8 === 4) this.drum(this.nextTime, 0.03);
         this.step++;
-        this.nextNoteTime += spb;
+        this.nextTime += stepDur;
       }
     }
-
-    sfxPickup() {
+    sfxPaint() {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
-      this.tone(t, 0.09, 84, 'square', 0.08, this.sfx);
-      this.tone(t + 0.04, 0.09, 88, 'square', 0.06, this.sfx);
+      this.tone(t, 0.05, 79, 'square', 0.04, this.sfx);
     }
-    sfxDash() { if (this.ctx) this.noise(this.ctx.currentTime, 0.04, 0.06); }
-    sfxMood() {
+    sfxUnlock() {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
-      this.tone(t, 0.16, 72, 'triangle', 0.08, this.sfx);
-      this.tone(t + 0.08, 0.2, 79, 'square', 0.06, this.sfx);
+      this.tone(t, 0.08, 72, 'triangle', 0.06, this.sfx);
+      this.tone(t + 0.06, 0.12, 79, 'square', 0.06, this.sfx);
     }
   }
   const audio = new AudioEngine();
 
-  // ===================== Save =====================
-  function loadSave() {
-    try {
-      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
-      bestScore = s.bestScore | 0;
-      unlockedPalettes = s.unlockedPalettes | 0;
-      volumeSlider.value = String(s.volume ?? 0.7);
-      perfMode = !!s.perfMode;
-      reducedMotion = !!s.reducedMotion;
-      highContrast = !!s.highContrast;
-      scanline = s.scanline !== false;
-      document.getElementById('perfMode').checked = perfMode;
-      document.getElementById('reducedMotion').checked = reducedMotion;
-      document.getElementById('highContrast').checked = highContrast;
-      document.getElementById('scanlineMode').checked = scanline;
-    } catch {}
-    bestLabel.textContent = String(bestScore);
+  // ================= Particle Pool =================
+  const partX = new Float32Array(PARTICLE_MAX);
+  const partY = new Float32Array(PARTICLE_MAX);
+  const partVX = new Float32Array(PARTICLE_MAX);
+  const partVY = new Float32Array(PARTICLE_MAX);
+  const partLife = new Float32Array(PARTICLE_MAX);
+  const partCol = new Uint8Array(PARTICLE_MAX);
+  const partOn = new Uint8Array(PARTICLE_MAX);
+
+  function spawnParticle(x, y, color) {
+    for (let i = 0; i < PARTICLE_MAX; i++) {
+      if (partOn[i]) continue;
+      partOn[i] = 1;
+      partX[i] = x; partY[i] = y;
+      const a = rng() * Math.PI * 2;
+      const s = 8 + rng() * 18;
+      partVX[i] = Math.cos(a) * s;
+      partVY[i] = Math.sin(a) * s;
+      partLife[i] = 0.25 + rng() * 0.35;
+      partCol[i] = color;
+      return;
+    }
   }
 
-  function saveGame() {
+  // ================= Save =================
+  function saveData() {
     const data = {
-      bestScore, unlockedPalettes,
-      volume: Number(volumeSlider.value),
-      perfMode, reducedMotion, highContrast, scanline
+      best,
+      paletteUnlock,
+      settings: {
+        perfMode, scanline, reducedMotion, highContrast, showFps, muted,
+        volume: Number(volumeEl.value)
+      }
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   }
 
-  // ===================== Gameplay =====================
-  function spawnGem(i) {
-    const base = i * 3;
-    gems[base] = 16 + (rng() * (W - 32)) | 0;
-    gems[base + 1] = 28 + (rng() * (H - 56)) | 0;
-    gems[base + 2] = 1;
+  function loadData() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+      best = s.best | 0;
+      paletteUnlock = clamp(s.paletteUnlock | 0, 1, PALETTES.length) || 1;
+      if (s.settings) {
+        perfMode = !!s.settings.perfMode;
+        scanline = s.settings.scanline !== false;
+        reducedMotion = !!s.settings.reducedMotion;
+        highContrast = !!s.settings.highContrast;
+        showFps = !!s.settings.showFps;
+        muted = !!s.settings.muted;
+        volumeEl.value = String(s.settings.volume ?? 0.65);
+      }
+    } catch {}
+    bestLabel.textContent = String(best);
+    perfModeEl.checked = perfMode;
+    scanlineEl.checked = scanline;
+    reducedMotionEl.checked = reducedMotion;
+    highContrastEl.checked = highContrast;
+    showFpsEl.checked = showFps;
+    muteEl.checked = muted;
+    fpsOverlay.classList.toggle('hidden', !showFps);
+    document.body.classList.toggle('hc', highContrast);
+    rebuildColorLut();
   }
 
-  function resetWorld() {
-    player.x = 160; player.y = 100; player.vx = 0; player.vy = 0;
-    player.dashCd = 0; player.dashT = 0;
-    score = 0; gemCount = 0; moodMeter = 0; timer = 120; moodIndex = 0; secretIndex = 0;
-    for (let i = 0; i < GEM_POOL; i++) spawnGem(i);
-    for (let i = 0; i < PARTICLE_POOL; i++) particles[i * 7 + 6] = 0;
+  // ================= Painting =================
+  function clearArt() {
+    colorGrid.fill(0);
+    pulseGrid.fill(0);
+    strokes = 0;
+    gems = 0;
+    secretStep = 0;
+    messageLabel.textContent = 'Fresh canvas. Paint something magical for Gen.';
     updateHud();
   }
 
-  function setSeedFromInput() {
-    const txt = seedInput.value.trim() || daySeed();
-    rng = makeRng(hashString(txt));
-  }
-
-  function setMute(m) { mute = m; audio.setVolume(Number(volumeSlider.value)); }
-
-  function startRun() {
-    inMenu = false;
-    menu.classList.add('hidden');
-    hud.classList.remove('hidden');
-    setSeedFromInput();
-    resetWorld();
-    audio.startMusic();
-    started = true;
-  }
-
-  function addParticle(x, y, vx, vy, life, type) {
-    for (let i = 0; i < PARTICLE_POOL; i++) {
-      const b = i * 7;
-      if (particles[b + 6] === 0) {
-        particles[b] = x; particles[b + 1] = y; particles[b + 2] = vx;
-        particles[b + 3] = vy; particles[b + 4] = life; particles[b + 5] = type; particles[b + 6] = 1;
-        return;
-      }
-    }
-  }
-
-  function spawnBurst(x, y, n, type) {
-    const count = perfMode ? (n >> 1) : n;
-    for (let i = 0; i < count; i++) {
-      const a = rng() * Math.PI * 2;
-      const s = 18 + rng() * 35;
-      addParticle(x, y, Math.cos(a) * s, Math.sin(a) * s, 0.35 + rng() * 0.4, type);
-    }
-  }
-
-  function moodShift() {
-    moodIndex = (moodIndex + 1) % MOODS.length;
-    moodMeter = 0;
-    cameraShake = 1;
-    audio.sfxMood();
-    spawnBurst(player.x, player.y, 28, 2);
-    messageLabel.textContent = `Mood Shift: ${MOODS[moodIndex].name}`;
-  }
-
-  function update(dt) {
-    if (inMenu || paused) return;
-    timer -= dt * (challengeMode ? 1.1 : 0.65);
-    if (timer <= 0) {
-      timer = 120;
-      moodShift();
-    }
-
-    let mx = input.right - input.left;
-    let my = input.down - input.up;
-    const mag = Math.hypot(mx, my) || 1;
-    mx /= mag; my /= mag;
-
-    if (player.dashCd > 0) player.dashCd -= dt;
-    if (player.dashT > 0) player.dashT -= dt;
-
-    if (input.action && player.dashCd <= 0) {
-      player.dashCd = 0.7;
-      player.dashT = 0.12;
-      const dx = mx || player.face;
-      const dy = my;
-      player.vx += dx * 125;
-      player.vy += dy * 125;
-      spawnBurst(player.x, player.y, 10, 1);
-      audio.sfxDash();
-    }
-
-    const accel = player.dashT > 0 ? 240 : 140;
-    player.vx += mx * accel * dt;
-    player.vy += my * accel * dt;
-    player.vx *= 0.84;
-    player.vy *= 0.84;
-
-    player.x += player.vx * dt;
-    player.y += player.vy * dt;
-
-    if (mx !== 0) player.face = mx > 0 ? 1 : -1;
-
-    if (player.x < 0) player.x += W;
-    if (player.x >= W) player.x -= W;
-    player.y = clamp(player.y, 20, H - 18);
-
-    const px = player.x;
-    const py = player.y;
-
-    for (let i = 0; i < GEM_POOL; i++) {
-      const b = i * 3;
-      if (gems[b + 2] === 0) continue;
-      const dx = gems[b] - px;
-      const dy = gems[b + 1] - py;
-      if (dx * dx + dy * dy < 70) {
-        gems[b + 2] = 0;
-        score += 10 + (moodIndex * 2);
-        gemCount++;
-        moodMeter += 0.16;
-        spawnBurst(gems[b], gems[b + 1], 16, 0);
-        audio.sfxPickup();
-        spawnGem(i);
-        if (moodMeter >= 1) moodShift();
-        if (score > bestScore) {
-          bestScore = score;
-          saveGame();
-        }
-        if (score >= 120 && unlockedPalettes < 1) {
-          unlockedPalettes = 1;
-          unlockLabel.textContent = 'Unlocked: Starlight contrast palette!';
-          saveGame();
-        }
-        if (gemCount % 12 === 0 && secretIndex < secrets.length) {
-          messageLabel.textContent = secrets[secretIndex++];
-        }
-      }
-    }
-
-    const grav = MOODS[moodIndex].quirk === 2 ? 16 : 0;
-    for (let i = 0; i < PARTICLE_POOL; i++) {
-      const b = i * 7;
-      if (!particles[b + 6]) continue;
-      particles[b + 4] -= dt;
-      if (particles[b + 4] <= 0) { particles[b + 6] = 0; continue; }
-      particles[b + 3] += grav * dt;
-      particles[b] += particles[b + 2] * dt;
-      particles[b + 1] += particles[b + 3] * dt;
-    }
-
-    if (!reducedMotion && rng() < 0.08) {
-      addParticle((rng() * W) | 0, 12 + ((rng() * 30) | 0), 0, 8 + rng() * 12, 1 + rng(), 3);
-    }
-
-    cameraShake = Math.max(0, cameraShake - dt * CAMERA_SHAKE_DECAY);
-    updateHud();
+  function pickPalette(index) {
+    paletteIndex = clamp(index, 0, paletteUnlock - 1);
+    moodLabel.textContent = `Palette: ${PALETTES[paletteIndex].name}`;
+    renderPaletteButtons();
   }
 
   function updateHud() {
-    scoreLabel.textContent = String(score);
-    bestLabel.textContent = String(bestScore);
-    gemLabel.textContent = String(gemCount);
-    moodLabel.textContent = MOODS[moodIndex].name;
+    strokeLabel.textContent = String(strokes);
+    bestLabel.textContent = String(best);
+    gemLabel.textContent = String(gems);
   }
 
-  // ===================== Renderer =====================
-  function drawPixelHeart(x, y, c) {
-    ctx.fillStyle = c;
-    ctx.fillRect(x + 1, y, 2, 1);
-    ctx.fillRect(x, y + 1, 4, 1);
-    ctx.fillRect(x, y + 2, 4, 1);
-    ctx.fillRect(x + 1, y + 3, 2, 1);
+  function idx(gx, gy) { return gy * GRID_W + gx; }
+
+  function brushAt(gx, gy) {
+    const bs = brush;
+    for (let oy = -bs; oy <= bs; oy++) {
+      const y = gy + oy;
+      if (y < 0 || y >= GRID_H) continue;
+      for (let ox = -bs; ox <= bs; ox++) {
+        const x = gx + ox;
+        if (x < 0 || x >= GRID_W) continue;
+        if (ox * ox + oy * oy > bs * bs) continue;
+        const i = idx(x, y);
+        const before = colorGrid[i];
+        if (tool === 1) {
+          colorGrid[i] = 0;
+          pulseGrid[i] = 0;
+        } else if (tool === 2) {
+          if (before !== 0) pulseGrid[i] = (pulseGrid[i] + 48) & 255;
+        } else {
+          colorGrid[i] = colorIndex + 1;
+          pulseGrid[i] = (globalWave + ((rng() * 255) | 0)) & 255;
+          if (before === 0) {
+            strokes++;
+            if (strokes > best) { best = strokes; saveData(); }
+          }
+        }
+      }
+    }
+
+    if (!reducedMotion) {
+      const c = colorIndex;
+      const count = perfMode ? 2 : 4;
+      for (let i = 0; i < count; i++) {
+        const sx = PAINT_X + gx * CELL + 1;
+        const sy = PAINT_Y + gy * CELL + 1;
+        spawnParticle(sx, sy, c);
+      }
+    }
+
+    if (tool === 0 && (strokes % 40 === 0) && strokes > 0) {
+      gems++;
+      if (gems % 2 === 0 && paletteUnlock < PALETTES.length) {
+        paletteUnlock++;
+        unlockLabel.textContent = `Unlocked palette: ${PALETTES[paletteUnlock - 1].name}`;
+        messageLabel.textContent = SECRET_MSG[Math.min(secretStep, SECRET_MSG.length - 1)];
+        secretStep++;
+        audio.sfxUnlock();
+      }
+    }
+
+    if ((strokes & 7) === 0) audio.sfxPaint();
+    updateHud();
   }
 
-  function render(t) {
-    const mood = MOODS[moodIndex];
-    const shx = cameraShake > 0 ? ((rng() * 3 - 1.5) * cameraShake) | 0 : 0;
-    const shy = cameraShake > 0 ? ((rng() * 3 - 1.5) * cameraShake) | 0 : 0;
+  let drawing = false;
+  let lastGX = -1, lastGY = -1;
 
-    ctx.setTransform(1, 0, 0, 1, shx, shy);
-    ctx.fillStyle = highContrast ? '#000' : mood.bgA;
-    ctx.fillRect(-2, -2, W + 4, H + 4);
+  function canvasToGrid(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const x = ((clientX - r.left) * W / r.width) | 0;
+    const y = ((clientY - r.top) * H / r.height) | 0;
+    if (x < PAINT_X || x >= PAINT_X + PAINT_W || y < PAINT_Y || y >= PAINT_Y + PAINT_H) return null;
+    return [((x - PAINT_X) / CELL) | 0, ((y - PAINT_Y) / CELL) | 0];
+  }
 
-    // sky gradient bands
-    for (let y = 0; y < 80; y += 8) {
-      const k = y / 80;
-      ctx.fillStyle = highContrast ? '#111' : `rgba(${(24 + 150 * k) | 0}, ${(16 + 80 * k) | 0}, ${(45 + 150 * k) | 0}, 0.75)`;
-      ctx.fillRect(0, y, W, 8);
+  function paintLine(x0, y0, x1, y1) {
+    let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    while (true) {
+      brushAt(x0, y0);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = err << 1;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function onPointerDown(e) {
+    if (!started) return;
+    const p = canvasToGrid(e.clientX, e.clientY);
+    if (!p) return;
+    drawing = true;
+    lastGX = p[0]; lastGY = p[1];
+    brushAt(lastGX, lastGY);
+    e.preventDefault();
+  }
+  function onPointerMove(e) {
+    if (!drawing || !started) return;
+    const p = canvasToGrid(e.clientX, e.clientY);
+    if (!p) return;
+    const gx = p[0], gy = p[1];
+    if (gx === lastGX && gy === lastGY) return;
+    paintLine(lastGX, lastGY, gx, gy);
+    lastGX = gx; lastGY = gy;
+    e.preventDefault();
+  }
+  function onPointerUp() { drawing = false; }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+  // ================= Input =================
+  window.addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    if (k === 'p') paused = !paused;
+    else if (k === 'f') { showFps = !showFps; showFpsEl.checked = showFps; fpsOverlay.classList.toggle('hidden', !showFps); saveData(); }
+    else if (k === 'm') { muted = !muted; muteEl.checked = muted; audio.setVolume(Number(volumeEl.value)); saveData(); }
+    else if (k === 'c') clearArt();
+    else if (k === '[') { brush = clamp(brush - 1, 1, 4); brushLabel.textContent = `Brush ${brush}`; }
+    else if (k === ']') { brush = clamp(brush + 1, 1, 4); brushLabel.textContent = `Brush ${brush}`; }
+    else if (k >= '1' && k <= '8') colorIndex = clamp((k.charCodeAt(0) - 49), 0, 7);
+  });
+
+  // ================= Rendering =================
+  function renderBackground(t) {
+    ctx.fillStyle = highContrast ? '#000' : '#456fdf';
+    ctx.fillRect(0, 0, W, H);
+
+    // clouds
+    if (!perfMode) {
+      ctx.fillStyle = highContrast ? '#fff' : '#d8d8d8';
+      for (let i = 0; i < 6; i++) {
+        const x = ((i * 56 + (t * 0.01 * (i + 1))) % (W + 20)) - 20;
+        const y = 8 + ((i & 1) * 8);
+        ctx.fillRect(x | 0, y, 16, 6);
+        ctx.fillRect((x + 4) | 0, y - 3, 10, 3);
+      }
     }
 
-    // ground
-    ctx.fillStyle = highContrast ? '#222' : mood.ground;
-    ctx.fillRect(0, 130, W, 50);
+    // pyramids inspired geometry
+    ctx.fillStyle = highContrast ? '#777' : '#ff7f3f';
+    ctx.beginPath();
+    ctx.moveTo(45, 120); ctx.lineTo(120, 30); ctx.lineTo(190, 120); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(130, 120); ctx.lineTo(210, 20); ctx.lineTo(290, 120); ctx.closePath(); ctx.fill();
 
-    // environment strips
-    const wave = Math.sin(t * 0.002) * (reducedMotion ? 0.5 : 2);
-    ctx.fillStyle = highContrast ? '#fff' : mood.deco;
-    for (let i = 0; i < 40; i++) {
-      const x = (i * 9 + ((t * 0.03) | 0)) % W;
-      const h = 3 + ((i + moodIndex) % 4);
-      ctx.fillRect(x, 130 - h - ((i & 1) ? wave : -wave), 1, h);
+    ctx.fillStyle = highContrast ? '#444' : '#bc6b00';
+    ctx.beginPath();
+    ctx.moveTo(70, 120); ctx.lineTo(120, 55); ctx.lineTo(165, 120); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(160, 120); ctx.lineTo(210, 42); ctx.lineTo(260, 120); ctx.closePath(); ctx.fill();
+
+    // patterned frame area
+    ctx.fillStyle = highContrast ? '#111' : '#7d7408';
+    ctx.fillRect(0, 120, W, 60);
+    if (!perfMode) {
+      ctx.fillStyle = highContrast ? '#333' : '#d0be2c';
+      for (let y = 120; y < H; y += 4) {
+        for (let x = 0; x < W; x += 6) {
+          if (((x + y) & 8) === 0) ctx.fillRect(x, y, 2, 2);
+        }
+      }
     }
 
-    // gems
-    const pulse = 0.5 + 0.5 * Math.sin(t * 0.01);
-    ctx.fillStyle = mood.gem;
-    for (let i = 0; i < GEM_POOL; i++) {
-      const b = i * 3;
-      if (!gems[b + 2]) continue;
-      const x = gems[b] | 0;
-      const y = (gems[b + 1] + ((i & 1) ? pulse : -pulse)) | 0;
-      ctx.fillRect(x, y, 2, 2);
-      ctx.fillRect(x - 1, y + 1, 4, 1);
+    // paint frame
+    ctx.fillStyle = highContrast ? '#fff' : '#a96c15';
+    ctx.fillRect(PAINT_X - 6, PAINT_Y - 6, PAINT_W + 12, PAINT_H + 12);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(PAINT_X - 2, PAINT_Y - 2, PAINT_W + 4, PAINT_H + 4);
+  }
+
+  function renderPaintLayer() {
+    px.fill(packRGBA(0, 0, 0));
+    const lut = colorLut[paletteIndex];
+    const wave = globalWave & 1023;
+
+    for (let gy = 0; gy < GRID_H; gy++) {
+      let row = gy * GRID_W;
+      for (let gx = 0; gx < GRID_W; gx++) {
+        const ci = colorGrid[row + gx];
+        if (ci === 0) continue;
+        const pulse = pulseGrid[row + gx];
+        const color = lut[ci - 1][(wave + pulse) & 1023];
+        const sx = gx * CELL;
+        const sy = gy * CELL;
+        const o0 = sy * PAINT_W + sx;
+        const o1 = o0 + PAINT_W;
+        const o2 = o1 + PAINT_W;
+        px[o0] = color; px[o0 + 1] = color; px[o0 + 2] = color;
+        px[o1] = color; px[o1 + 1] = color; px[o1 + 2] = color;
+        px[o2] = color; px[o2 + 1] = color; px[o2 + 2] = color;
+      }
     }
 
-    // particles
-    for (let i = 0; i < PARTICLE_POOL; i++) {
-      const b = i * 7;
-      if (!particles[b + 6]) continue;
-      const type = particles[b + 5] | 0;
-      if (type === 0) ctx.fillStyle = '#fff3b0';
-      else if (type === 1) ctx.fillStyle = '#8ffcff';
-      else if (type === 2) ctx.fillStyle = '#ff8ed2';
-      else ctx.fillStyle = '#9ab0ff';
-      ctx.fillRect(particles[b] | 0, particles[b + 1] | 0, 1, 1);
+    paintCtx.putImageData(paintImage, 0, 0);
+    ctx.drawImage(paintCanvas, PAINT_X, PAINT_Y);
+  }
+
+  function renderParticles(dt) {
+    if (reducedMotion) return;
+    for (let i = 0; i < PARTICLE_MAX; i++) {
+      if (!partOn[i]) continue;
+      partLife[i] -= dt;
+      if (partLife[i] <= 0) { partOn[i] = 0; continue; }
+      partVY[i] += 16 * dt;
+      partX[i] += partVX[i] * dt;
+      partY[i] += partVY[i] * dt;
+      const c = PALETTES[paletteIndex].colors[partCol[i] % 8];
+      ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+      ctx.fillRect(partX[i] | 0, partY[i] | 0, 1, 1);
     }
+  }
 
-    // player
-    const px = player.x | 0;
-    const py = player.y | 0;
-    drawPixelHeart(px - 2, py - 3, highContrast ? '#0ff' : '#ff5e9c');
-    if ((t * 0.02) % 2 < 1) {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(px + (player.face > 0 ? 1 : -2), py - 2, 1, 1);
-    }
+  function renderCRT() {
+    if (!scanline || perfMode) return;
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+    ctx.fillStyle = 'rgba(255,140,60,0.07)';
+    ctx.fillRect(0, 0, W, 4);
+    ctx.fillRect(0, H - 4, W, 4);
+  }
 
-    // mood meter + timer bar
-    ctx.fillStyle = '#111'; ctx.fillRect(8, 8, 100, 5);
-    ctx.fillStyle = '#ff8cc3'; ctx.fillRect(9, 9, (98 * moodMeter) | 0, 3);
-    ctx.fillStyle = '#111'; ctx.fillRect(8, 15, 100, 4);
-    ctx.fillStyle = '#8be2ff'; ctx.fillRect(9, 16, (98 * (timer / 120)) | 0, 2);
-
-    if (scanline && !perfMode) {
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
-    }
-
+  function renderUI() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(6, 6, 86, 12);
+    ctx.fillStyle = '#8effff';
+    const fill = Math.min(84, ((strokes % 80) / 80) * 84) | 0;
+    ctx.fillRect(7, 7, fill, 10);
     if (paused) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#fff';
-      ctx.fillText('PAUSED', 140, 90);
+      ctx.font = '8px monospace';
+      ctx.fillText('PAUSED', 145, 90);
     }
   }
 
-  // ===================== Main loop =====================
-  function frame(ts) {
+  function render(dt, t) {
+    renderBackground(t);
+    renderPaintLayer();
+    renderParticles(dt);
+    renderUI();
+    renderCRT();
+  }
+
+  // ================= Update/Loop =================
+  function update(dt) {
+    if (!started || paused) return;
+    globalWave = (globalWave + (reducedMotion ? 2 : 5)) & 1023;
+  }
+
+  function loop(ts) {
     if (!last) last = ts;
     let dt = (ts - last) / 1000;
     last = ts;
@@ -580,51 +596,91 @@
       update(FIXED_DT);
       accum -= FIXED_DT;
     }
-    render(ts);
 
-    fpsTimer += dt;
+    render(dt, ts);
+
+    fpsTime += dt;
     fpsFrames++;
-    if (fpsTimer >= 0.25) {
-      frameFps = (fpsFrames / fpsTimer) | 0;
-      frameMs = 1000 / (frameFps || 1);
-      fpsFrames = 0; fpsTimer = 0;
-      if (showFps) fpsOverlay.innerHTML = `FPS: ${frameFps}<br/>FT: ${frameMs.toFixed(1)} ms`;
+    if (fpsTime > 0.25) {
+      fps = (fpsFrames / fpsTime) | 0;
+      if (showFps) fpsOverlay.innerHTML = `FPS: ${fps}<br/>FT: ${(1000 / (fps || 1)).toFixed(1)} ms`;
+      fpsFrames = 0;
+      fpsTime = 0;
     }
 
-    requestAnimationFrame(frame);
+    requestAnimationFrame(loop);
   }
 
-  // ===================== UI =====================
+  // ================= UI wiring =================
+  function renderPaletteButtons() {
+    paletteRow.innerHTML = '';
+    for (let i = 0; i < paletteUnlock; i++) {
+      const b = document.createElement('button');
+      b.className = 'colorBtn' + (i === paletteIndex ? ' active' : '');
+      const c = PALETTES[i].colors[0];
+      b.style.background = `rgb(${c[0]},${c[1]},${c[2]})`;
+      b.title = PALETTES[i].name;
+      b.addEventListener('click', () => pickPalette(i));
+      paletteRow.appendChild(b);
+    }
+  }
+
+  function setTool(t) {
+    tool = t;
+    document.getElementById('toolPaint').classList.toggle('active', t === 0);
+    document.getElementById('toolErase').classList.toggle('active', t === 1);
+    document.getElementById('toolPulse').classList.toggle('active', t === 2);
+  }
+
   document.getElementById('gestureBtn').addEventListener('click', () => {
     startOverlay.classList.add('hidden');
     audio.init();
-    audio.startMusic();
-    audio.stopMusic();
+    audio.start();
+    audio.stop(); // obey autoplay policy: unlocked but not yet running until Start
   });
 
-  document.getElementById('startBtn').addEventListener('click', startRun);
-  document.getElementById('challengeBtn').addEventListener('click', (e) => {
-    challengeMode = !challengeMode;
-    e.target.textContent = `Challenge Mode: ${challengeMode ? 'On' : 'Off'}`;
+  document.getElementById('startBtn').addEventListener('click', () => {
+    started = true;
+    titleCard.classList.add('hidden');
+    topHud.classList.remove('hidden');
+    const seed = seedInput.value.trim() || daySeed();
+    rng = makeRng(hashString(seed));
+    pickPalette(0);
+    messageLabel.textContent = 'Draw your 8-bit masterpiece for Gen 💖';
+    audio.start();
   });
 
-  volumeSlider.addEventListener('input', () => {
-    audio.setVolume(Number(volumeSlider.value));
-    saveGame();
-  });
+  document.getElementById('clearBtn').addEventListener('click', clearArt);
+  document.getElementById('toolPaint').addEventListener('click', () => setTool(0));
+  document.getElementById('toolErase').addEventListener('click', () => setTool(1));
+  document.getElementById('toolPulse').addEventListener('click', () => setTool(2));
+  document.getElementById('sizeDown').addEventListener('click', () => { brush = clamp(brush - 1, 1, 4); brushLabel.textContent = `Brush ${brush}`; });
+  document.getElementById('sizeUp').addEventListener('click', () => { brush = clamp(brush + 1, 1, 4); brushLabel.textContent = `Brush ${brush}`; });
 
-  document.getElementById('perfMode').addEventListener('change', e => { perfMode = e.target.checked; saveGame(); });
-  document.getElementById('scanlineMode').addEventListener('change', e => { scanline = e.target.checked; saveGame(); });
-  document.getElementById('reducedMotion').addEventListener('change', e => { reducedMotion = e.target.checked; saveGame(); });
-  document.getElementById('highContrast').addEventListener('change', e => {
+  perfModeEl.addEventListener('change', (e) => { perfMode = e.target.checked; saveData(); });
+  scanlineEl.addEventListener('change', (e) => { scanline = e.target.checked; saveData(); });
+  reducedMotionEl.addEventListener('change', (e) => { reducedMotion = e.target.checked; saveData(); });
+  highContrastEl.addEventListener('change', (e) => {
     highContrast = e.target.checked;
     document.body.classList.toggle('hc', highContrast);
-    saveGame();
+    rebuildColorLut();
+    saveData();
   });
+  showFpsEl.addEventListener('change', (e) => {
+    showFps = e.target.checked;
+    fpsOverlay.classList.toggle('hidden', !showFps);
+    saveData();
+  });
+  muteEl.addEventListener('change', (e) => { muted = e.target.checked; audio.setVolume(Number(volumeEl.value)); saveData(); });
+  volumeEl.addEventListener('input', () => { audio.setVolume(Number(volumeEl.value)); saveData(); });
 
-  loadSave();
-  audio.setVolume(Number(volumeSlider.value));
-  hud.classList.add('hidden');
-  messageLabel.textContent = 'A tiny world of hearts, stars, and surprises for Gen.';
-  requestAnimationFrame(frame);
+  // init
+  loadData();
+  setTool(0);
+  clearArt();
+  pickPalette(0);
+  topHud.classList.add('hidden');
+  brushLabel.textContent = `Brush ${brush}`;
+  updateHud();
+  requestAnimationFrame(loop);
 })();

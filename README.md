@@ -1,38 +1,56 @@
-# Gen's World! 💖
+# Gen's World! 🎨💖
 
-A retro 8-bit HTML5 art game made as a gift for Gen.
+**Gen's World! Pixel Pulse Atelier** is a retro 8-bit HTML5 painting game/toy designed for smooth 60 FPS play on desktop and mobile (including iOS Safari).
+
+## What it is
+- A single-canvas pixel painter with pulsating RGB color animation
+- 8-bit CRT vibe inspired by classic arcade aesthetics
+- Mobile-first paint interaction (tap/drag directly on canvas)
+- Chill progression: stroke milestones, gem counters, unlockable palettes, and Gen-themed secret messages
 
 ## Features
-- Single-canvas pixel art game with mood-shifting scenes
-- Keyboard + touch controls
-- Chill loop: collect Gems of Gen, fill mood meter, trigger scene transitions
-- Seeded variation (`daily seed` or custom seed phrase)
-- Lightweight progression + unlock messages and palette bonus
-- WebAudio-generated chiptune (lead, bass, drums) with tracker-like scheduling
-- SFX: pickup, dash, mood transition
-- Performance-focused: fixed timestep, pooled particles, FPS overlay, performance mode
-- Accessibility toggles: reduced motion, high contrast, mute + volume
+- **Performance-focused renderer**
+  - Fixed timestep loop (`requestAnimationFrame` + fixed updates)
+  - Typed arrays for paint grid and particle pool
+  - Offscreen pixel buffer for the paint layer
+  - Optional **Performance mode**
+- **Art style + effects**
+  - Retro palette sets with pulse animation
+  - CRT scanline toggle
+  - Pixel geometry inspired by classic 8-bit arcade framing
+- **Controls**
+  - Pointer/touch drawing for iOS/mobile
+  - Keyboard shortcuts for desktop
+- **Audio**
+  - WebAudio chiptune loop + paint/unlock SFX
+  - Autoplay-safe start gesture
+- **Accessibility basics**
+  - Reduced motion toggle
+  - High contrast toggle
+  - Mute + volume
+  - FPS overlay toggle
 
 ## Run locally
-Just open `index.html` in a modern browser.
+Open `index.html` directly in a browser.
 
-> Some browsers restrict audio until user gesture. Use the **Click to Start** overlay first.
+If audio does not start immediately, press **Tap to Wake Audio + Start** first (required by browser audio policy).
 
-## Deploy to GitHub Pages
-1. Push these files to a GitHub repository.
-2. In repo settings, open **Pages**.
-3. Set source to deploy from the main branch root (or `/docs` if you move files).
-4. Save; GitHub will publish automatically.
+## Deploy on GitHub Pages
+1. Push these files to your repository root (`index.html`, `style.css`, `game.js`, `README.md`).
+2. In GitHub repo settings, open **Pages**.
+3. Set source to your branch root.
+4. Save.
 
-No build step, no npm, no frameworks required.
+No build step. No npm. No external libraries.
 
-## Controls
-- Move: Arrow Keys / WASD
-- Dash/Interact: Space
-- Start: Enter or Start button
-- Pause: P
-- Mute: M
-- FPS overlay: F
-- Touch: virtual stick + Dash button
+## Quick Controls
+- **Touch/iOS:** tap + drag to paint
+- **Keyboard:**
+  - `1..8` select color slot
+  - `[` / `]` brush size
+  - `C` clear canvas
+  - `P` pause
+  - `F` toggle FPS
+  - `M` mute
 
 Made for Gen ✨

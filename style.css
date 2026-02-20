@@ -1,117 +1,90 @@
 :root {
   color-scheme: dark;
-  --bg: #120b1f;
-  --panel: #1f1530cc;
-  --text: #f8ecff;
-  --accent: #ff6da8;
+  --bg: #0f1026;
+  --panel: #121528dd;
+  --text: #f8f9ff;
+  --accent: #69d0ff;
 }
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   font-family: "Press Start 2P", "Courier New", monospace;
-  background: radial-gradient(circle at 20% 10%, #2d2242, #120b1f 60%);
   color: var(--text);
+  background: radial-gradient(circle at 50% 10%, #2a2f6b, #0f1026 60%);
 }
 #app {
-  position: relative;
   width: 100%;
   height: 100%;
+  position: relative;
   display: grid;
   place-items: center;
-  overflow: hidden;
 }
 #game {
   width: min(100vw, calc(100vh * 16 / 9));
   aspect-ratio: 16 / 9;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  border: 2px solid #4a3463;
-  box-shadow: 0 0 0 2px #120b1f, 0 20px 60px #000;
+  border: 2px solid #ff8c34;
+  box-shadow: 0 0 0 3px #241b3d, 0 20px 50px #000;
   touch-action: none;
 }
 .panel {
   position: absolute;
   background: var(--panel);
-  border: 1px solid #7e66a2;
+  border: 1px solid #6e78c4;
   padding: 8px 10px;
+  font-size: 10px;
   line-height: 1.45;
-  font-size: 11px;
   backdrop-filter: blur(2px);
 }
-#hud { top: 10px; left: 10px; min-width: 260px; }
-#menu {
+#topHud { top: 8px; left: 8px; min-width: 260px; }
+#titleCard {
   top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: min(92vw, 460px);
+  width: min(94vw, 500px);
   text-align: center;
 }
-#menu h1 { margin: 0 0 8px 0; color: #ffd3e8; }
-#menu .small { font-size: 10px; opacity: 0.9; }
-#menu label { display: block; margin: 8px 0; }
-#menu input[type="text"], #menu input[type="range"], #menu input:not([type]) {
-  width: 100%; margin-top: 4px;
-}
-.row { display: flex; gap: 8px; justify-content: center; }
+#titleCard h1 { margin: 0 0 6px; color: #ffe59f; }
+.subtitle { color: #7fd4ff; margin: 0 0 8px; }
+.small { opacity: 0.95; }
+#titleCard label { display: block; margin: 8px 0; }
+#titleCard input[type="text"],
+#titleCard input[type="range"],
+#titleCard input:not([type]) { width: 100%; margin-top: 4px; }
+.row { display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap; }
 button {
-  border: 1px solid #ff9ac4;
-  background: #3b2452;
+  border: 1px solid #7fd4ff;
+  background: #27367a;
   color: var(--text);
   font: inherit;
-  padding: 8px 10px;
-  cursor: pointer;
+  padding: 7px 9px;
 }
-button:hover { background: #573073; }
+button.active { background: #445fcc; border-color: #ffe59f; }
 .overlay {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  background: #120b1fe0;
+  background: #08090fe0;
 }
-#gestureBtn { font-size: 14px; padding: 14px 18px; }
-#fpsOverlay { right: 10px; top: 10px; font-size: 10px; }
+#gestureBtn { padding: 14px 18px; font-size: 12px; }
+#paintBar { left: 8px; bottom: 8px; min-width: 300px; }
+.paletteRow { justify-content: flex-start; }
+.colorBtn {
+  width: 18px; height: 18px; border: 1px solid #fff6; padding: 0;
+}
+#fpsOverlay { top: 8px; right: 8px; }
 .hidden { display: none !important; }
-#touchControls {
-  position: absolute;
-  inset: auto 0 10px 0;
-  display: none;
-  justify-content: space-between;
-  padding: 0 14px;
-  pointer-events: none;
-}
-#stickZone, #actionBtn {
-  pointer-events: auto;
-}
-#stickZone {
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  border: 2px solid #9e80c7;
-  background: #2a1f3db8;
-  position: relative;
-}
-#stickKnob {
-  position: absolute;
-  width: 36px;
-  height: 36px;
-  left: 32px;
-  top: 32px;
-  border-radius: 50%;
-  background: #ff9ac4cc;
-}
-#actionBtn {
-  width: 92px;
-  height: 92px;
-  border-radius: 50%;
-}
-@media (max-width: 900px), (pointer: coarse) {
-  #touchControls { display: flex; }
-  #hud { font-size: 10px; }
-}
 body.hc {
   --panel: #000d;
   --text: #fff;
   --accent: #0ff;
   background: #000;
+}
+@media (max-width: 900px), (pointer: coarse) {
+  #topHud, #paintBar { font-size: 9px; }
+  #paintBar { min-width: 240px; }
+  button { padding: 8px; }
 }
