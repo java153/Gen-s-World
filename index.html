@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <title>Gen's World! Pixel Pulse Atelier</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main id="app">
+    <canvas id="game" width="320" height="180" aria-label="Gen's World painting canvas"></canvas>
+
+    <section id="topHud" class="panel">
+      <div><strong>Gen's World! 🎨</strong> <span id="moodLabel">Palette: Pharaoh Sunset</span></div>
+      <div>Strokes: <span id="strokeLabel">0</span> · Best: <span id="bestLabel">0</span> · Gems: <span id="gemLabel">0</span></div>
+      <div id="messageLabel">Paint with love. Hold + drag to draw. 💖</div>
+    </section>
+
+    <section id="titleCard" class="panel">
+      <h1>Gen's World!</h1>
+      <p class="subtitle">Pixel Pulse Atelier</p>
+      <p class="small">A retro 8-bit painting toy made for Gen.</p>
+      <p class="small">Draw with pulsating RGB paint. Unlock palettes + sweet messages.</p>
+      <div class="row">
+        <button id="startBtn">Start Painting</button>
+        <button id="clearBtn">Clear Art</button>
+      </div>
+      <label>Seed phrase <input id="seedInput" maxlength="36" placeholder="gen-love" /></label>
+      <details>
+        <summary>Settings</summary>
+        <label><input id="perfMode" type="checkbox" /> Performance mode</label>
+        <label><input id="scanlineMode" type="checkbox" checked /> CRT filter</label>
+        <label><input id="reducedMotion" type="checkbox" /> Reduced motion</label>
+        <label><input id="highContrast" type="checkbox" /> High contrast</label>
+        <label><input id="showFpsToggle" type="checkbox" /> Show FPS</label>
+        <label><input id="muteToggle" type="checkbox" /> Mute</label>
+        <label>Volume <input id="volume" type="range" min="0" max="1" step="0.01" value="0.65" /></label>
+      </details>
+      <p id="unlockLabel" class="small"></p>
+      <p class="small">Keyboard: 1-8 colors · [ ] brush size · C clear · P pause · F FPS · M mute</p>
+    </section>
+
+    <section id="startOverlay" class="overlay">
+      <button id="gestureBtn">Tap to Wake Audio + Start ✨</button>
+    </section>
+
+    <section id="paintBar" class="panel">
+      <div class="row paletteRow" id="paletteRow"></div>
+      <div class="row">
+        <button id="toolPaint" class="active">Paint</button>
+        <button id="toolErase">Erase</button>
+        <button id="toolPulse">Pulse+</button>
+      </div>
+      <div class="row">
+        <button id="sizeDown">Brush -</button>
+        <span id="brushLabel">Brush 2</span>
+        <button id="sizeUp">Brush +</button>
+      </div>
+    </section>
+
+    <section id="fpsOverlay" class="panel hidden">FPS: --<br/>FT: -- ms</section>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
